@@ -715,6 +715,82 @@ body {
 /* ANIMATIONS */
 @keyframes fadeIn { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:translateY(0); } }
 .ex-card { animation: fadeIn 0.3s ease both; }
+
+/* LAST SESSION BANNER */
+.last-session-badge {
+  font-family: 'Source Code Pro', monospace;
+  font-size: 9px;
+  color: var(--blue-light);
+  background: rgba(31,95,191,0.1);
+  border: 1px solid rgba(31,95,191,0.2);
+  border-radius: 2px;
+  padding: 2px 7px;
+  margin-left: 8px;
+  vertical-align: middle;
+  letter-spacing: 1px;
+}
+
+/* ADD EXERCISE FORM */
+.add-ex-wrap {
+  margin: 16px 16px 0;
+  border: 1px dashed var(--border-light);
+  border-radius: 4px;
+  overflow: hidden;
+}
+.add-ex-header {
+  background: var(--surface2);
+  padding: 12px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+}
+.add-ex-title {
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--silver);
+  letter-spacing: 1px;
+  text-transform: uppercase;
+}
+.add-ex-form {
+  display: none;
+  padding: 16px;
+  background: var(--surface);
+  flex-direction: column;
+  gap: 10px;
+}
+.add-ex-form.open { display: flex; }
+.add-ex-input {
+  background: var(--surface3);
+  border: 1px solid var(--border);
+  color: var(--white);
+  font-family: 'Inter', sans-serif;
+  font-size: 14px;
+  padding: 10px 12px;
+  border-radius: 3px;
+  outline: none;
+  width: 100%;
+}
+.add-ex-input:focus { border-color: var(--blue-light); }
+.add-ex-input::placeholder { color: var(--text-muted); }
+.add-ex-row { display: flex; gap: 8px; }
+.add-ex-submit {
+  background: linear-gradient(135deg, var(--blue-dim), var(--blue));
+  border: 1px solid var(--blue-light);
+  color: var(--white);
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  padding: 12px;
+  border-radius: 3px;
+  cursor: pointer;
+  width: 100%;
+  transition: all 0.15s;
+}
+.add-ex-submit:active { background: var(--blue-light); }
 </style>
 </head>
 <body>
@@ -752,6 +828,21 @@ body {
     </div>
   </div>
   <div class="exercise-list" id="exerciseList"></div>
+  <div class="add-ex-wrap" id="addExWrap">
+    <div class="add-ex-header" onclick="toggleAddEx()">
+      <div class="add-ex-title">+ Add Exercise</div>
+      <span id="addExChevron" style="color:var(--silver);font-size:14px;">▾</span>
+    </div>
+    <div class="add-ex-form" id="addExForm">
+      <input class="add-ex-input" id="addExName" placeholder="Exercise name" type="text">
+      <div class="add-ex-row">
+        <input class="add-ex-input" id="addExSets" placeholder="Sets (e.g. 3)" type="number" inputmode="numeric" style="flex:1">
+        <input class="add-ex-input" id="addExReps" placeholder="Reps (e.g. 10)" type="text" style="flex:1">
+      </div>
+      <button class="add-ex-submit" onclick="addCustomExercise()">Add to Workout</button>
+    </div>
+  </div>
+  <div style="height:16px"></div>
   <div class="finish-wrap">
     <button class="finish-btn" id="finishBtn" onclick="goFeedback()">Complete Workout</button>
   </div>
@@ -890,6 +981,44 @@ let swapData    = {};   // exKey -> {text, altName, accepted}
 // ══════════════════════════════════════════════════════
 // HOME
 // ══════════════════════════════════════════════════════
+// ══════════════════════════════════════════════════════
+// ADD CUSTOM EXERCISE
+// ══════════════════════════════════════════════════════
+function toggleAddEx() {
+  const form    = document.getElementById('addExForm');
+  const chevron = document.getElementById('addExChevron');
+  form.classList.toggle('open');
+  chevron.textContent = form.classList.contains('open') ? '▴' : '▾';
+}
+
+function addCustomExercise() {
+  const name = document.getElementById('addExName').value.trim();
+  const sets = parseInt(document.getElementById('addExSets').value) || 3;
+  const reps = document.getElementById('addExReps').value.trim() || '10';
+  if (!name) { document.getElementById('addExName').focus(); return; }
+
+  const day   = PROGRAM[currentDayIdx];
+  const newEx = { name, sets, reps, tag: null, history: [], custom: true };
+  day.exercises.push(newEx);
+
+  // Re-render with last session data preserved
+  const lastSession = JSON.parse(localStorage.getItem(`session_${day.id}`) || '{}');
+  renderExercises(day, lastSession);
+  updateProgress(day);
+
+  // Clear form and close
+  document.getElementById('addExName').value = '';
+  document.getElementById('addExSets').value = '';
+  document.getElementById('addExReps').value = '';
+  document.getElementById('addExForm').classList.remove('open');
+  document.getElementById('addExChevron').textContent = '▾';
+
+  // Scroll to new exercise
+  const newEi  = day.exercises.length - 1;
+  const exKey  = `${day.id}_${newEi}`;
+  setTimeout(() => document.getElementById(`card_${exKey}`)?.scrollIntoView({behavior:'smooth', block:'center'}), 100);
+}
+
 function renderHome() {
   const grid = document.getElementById('dayGrid');
   grid.innerHTML = PROGRAM.map((d,i) => `
@@ -919,16 +1048,19 @@ function startDay(idx) {
   swapData      = {};
 
   const day = PROGRAM[idx];
-  document.getElementById('topbarDay').textContent = day.name;
+  // Load last session from localStorage
+  const lastSession = JSON.parse(localStorage.getItem(`session_${day.id}`) || '{}');
+
+  document.getElementById('topbarDay').textContent  = day.name;
   document.getElementById('topbarMeta').textContent = day.type + ' · ' + day.exercises.length + ' EXERCISES';
 
-  renderExercises(day);
+  renderExercises(day, lastSession);
   updateProgress(day);
   show('workoutScreen');
   window.scrollTo(0,0);
 }
 
-function renderExercises(day) {
+function renderExercises(day, lastSession = {}) {
   const list = document.getElementById('exerciseList');
   list.innerHTML = day.exercises.map((ex, ei) => {
     const exKey = `${day.id}_${ei}`;
@@ -941,11 +1073,14 @@ function renderExercises(day) {
         ? `<div class="ex-tag finisher">FINISHER · DROP SET</div>`
         : '';
 
-    // Build set rows — editable weight + reps inputs per set
+    // Build set rows — editable weight + reps, pre-filled from last session if available
     const repDefault = getRepDefault(ex.reps);
+    const hasLastSession = Object.keys(lastSession).some(k => k.startsWith(exKey));
     const setRows = Array.from({length: ex.sets}, (_,si) => {
-      const setKey  = `${exKey}_${si}`;
-      const weight  = ex.history[si] ?? last;
+      const setKey   = `${exKey}_${si}`;
+      const prevData = lastSession[setKey];
+      const weight   = prevData ? prevData.weight : (ex.history[si] ?? last);
+      const reps     = prevData ? prevData.reps   : repDefault;
       return `
         <div class="set-row">
           <div class="set-label">SET ${si+1}</div>
@@ -960,7 +1095,7 @@ function renderExercises(day) {
           <div class="set-reps-box" id="repsbox_${setKey}">
             <input class="set-reps-input" id="repsinput_${setKey}"
               type="number" inputmode="numeric" step="1"
-              value="${repDefault}" placeholder="${repDefault}"
+              value="${reps}" placeholder="${reps}"
               oninput="onWeightInput()"
               onfocus="this.select()">
             <div class="set-unit">reps</div>
@@ -976,7 +1111,7 @@ function renderExercises(day) {
           <div class="ex-name-row">
             <div>
               <div class="ex-name" id="exname_${exKey}">${ex.name}</div>
-              <div class="ex-reps">${ex.sets} sets · ${ex.reps} reps · Last: ${last} lbs · Rec: ${rec} lbs</div>
+              <div class="ex-reps">${ex.sets} sets · ${ex.reps} reps · Last: ${last} lbs · Rec: ${rec} lbs${hasLastSession ? '<span class=\"last-session-badge\">PREV SESSION</span>' : ''}</div>
             </div>
           </div>
           <div class="sets-grid">${setRows}</div>
@@ -1003,28 +1138,27 @@ function renderExercises(day) {
 let totalVolume = 0;
 
 function logSet(exKey, setKey, si) {
-  // Don't double-count if already logged
   if (loggedSets[setKey]) return;
-
   const inputEl = document.getElementById(`input_${setKey}`);
+  const repsEl  = document.getElementById(`repsinput_${setKey}`);
   const weight  = parseFloat(inputEl?.value) || 0;
+  const reps    = parseInt(repsEl?.value) || 1;
   loggedSets[setKey] = weight;
 
-  const box = document.getElementById(`box_${setKey}`);
+  document.getElementById(`box_${setKey}`)?.classList.add('logged');
+  document.getElementById(`repsbox_${setKey}`)?.classList.add('logged');
   const btn = document.getElementById(`logbtn_${setKey}`);
-  if (box) box.classList.add('logged');
   if (btn) { btn.classList.add('logged-btn'); btn.textContent = '✓'; }
 
-  // Read actual reps entered for this set
-  const repsInputEl = document.getElementById(`repsinput_${setKey}`);
-  const reps = parseInt(repsInputEl?.value) || 1;
-  const repsBox = document.getElementById(`repsbox_${setKey}`);
-  if (repsBox) repsBox.classList.add('logged');
+  // Save to localStorage for next session
+  const day = PROGRAM[currentDayIdx];
+  const savedKey = `session_${day.id}`;
+  let saved = JSON.parse(localStorage.getItem(savedKey) || '{}');
+  saved[setKey] = { weight, reps };
+  localStorage.setItem(savedKey, JSON.stringify(saved));
 
-  const added = weight * reps;
-  const prev  = totalVolume;
-  totalVolume += added;
-
+  const prev = totalVolume;
+  totalVolume += weight * reps;
   animateVolume(prev, totalVolume);
 }
 
@@ -1114,7 +1248,7 @@ Respond ONLY as JSON, no markdown: {"altName":"<name>","reason":"<1-2 sentences:
   try {
     const res  = await fetch('https://api.anthropic.com/v1/messages', {
       method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ model:'claude-sonnet-4-20250514', max_tokens:200,
+      body: JSON.stringify({ model:'claude-sonnet-4-5', max_tokens:200,
         system: buildSystem(),
         messages:[{role:'user', content:prompt}]})
     });
@@ -1198,7 +1332,7 @@ Give Ty direct, specific post-workout feedback in 3–4 short paragraphs. Cover:
   try {
     const res  = await fetch('https://api.anthropic.com/v1/messages', {
       method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ model:'claude-sonnet-4-20250514', max_tokens:600,
+      body: JSON.stringify({ model:'claude-sonnet-4-5', max_tokens:600,
         system: buildSystem(),
         messages:[{role:'user', content:prompt}]})
     });
